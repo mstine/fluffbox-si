@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:int="http://www.springframework.org/schema/integration"
+	xmlns:int-stream="http://www.springframework.org/schema/integration/stream"
+	xmlns:int-file="http://www.springframework.org/schema/integration/file"
+	xmlns:int-jms="http://www.springframework.org/schema/integration/jms"
+	xsi:schemaLocation="http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-2.1.xsd
+		http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-2.1.xsd
+		http://www.springframework.org/schema/integration/jms http://www.springframework.org/schema/integration/jms/spring-integration-jms-2.1.xsd
+		http://www.springframework.org/schema/integration/stream http://www.springframework.org/schema/integration/stream/spring-integration-stream-2.1.xsd
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<bean id="connectionFactory"
+		class="org.springframework.jms.connection.CachingConnectionFactory">
+		<property name="targetConnectionFactory">
+			<bean class="org.apache.activemq.ActiveMQConnectionFactory">
+				<property name="brokerURL" value="tcp://localhost:61616" />
+			</bean>
+		</property>
+		<property name="sessionCacheSize" value="10" />
+		<property name="cacheProducers" value="false" />
+	</bean>
+
+	<bean id="requestQueue" class="org.apache.activemq.command.ActiveMQQueue">
+		<constructor-arg value="queue.demo" />
+	</bean>
+
+	<bean id="replyQueue" class="org.apache.activemq.command.ActiveMQQueue">
+		<constructor-arg value="queue.reply" />
+	</bean>
+
+	<int:poller id="poller" default="true" fixed-delay="1000" />
+
+	<int:gateway id="transactionService"
+		default-request-channel="incomingTxnChannel" service-interface="com.fluffbox.si.service.TransactionService">
+		<int:method name="processTransaction" />
+	</int:gateway>
+
+	<int:publish-subscribe-channel id="incomingTxnChannel" />
+	<int:channel id="toAccountsPayableChannel" />
+	<int:channel id="toKioskChannel" />
+	
+	<!-- Accounts Payable -->
+
+	<int:transformer id="txnToCsvTransformer" method="transform"
+		input-channel="incomingTxnChannel" output-channel="toAccountsPayableChannel">
+		<bean class="com.fluffbox.si.transformer.TransactionToCsvTransformer" />
+	</int:transformer>
+
+	<int-file:outbound-channel-adapter
+		directory="file:/tmp/accounts-payable" channel="toAccountsPayableChannel" />
+		
+	<!-- Kiosk -->
+
+	<int:object-to-json-transformer id="transactionToJsonTransformer"
+		input-channel="incomingTxnChannel" output-channel="toKioskChannel" />
+
+	<int-jms:outbound-channel-adapter
+		channel="toKioskChannel" destination="requestQueue" />
+
+	<!-- Email -->
+	
+	<!-- TODO -->
+	
+	<!-- Twitter -->
+
+	<!-- TODO -->
+	
+	<!-- Credit Card Processor -->
+	
+	<!-- TODO -->
+
+	<!-- Hello World Stuff -->
+
+	<!-- See also: http://static.springsource.org/spring-integration/reference/htmlsingle/#gateway-proxy 
+		http://www.eaipatterns.com/MessagingGateway.html -->
+	<int:gateway id="gateway" default-request-timeout="5000"
+		default-reply-timeout="5000" default-request-channel="requestChannel"
+		default-reply-channel="replyChannel"
+		service-interface="com.fluffbox.si.service.StringConversionService">
+		<int:method name="convertToUpperCase" />
+	</int:gateway>
+
+	<!-- See also: http://static.springsource.org/spring-integration/reference/htmlsingle/#service-activator 
+		http://www.eaipatterns.com/MessagingAdapter.html -->
+	<int:service-activator id="serviceActivator"
+		input-channel="requestChannel" output-channel="replyChannel"
+		expression="payload.toUpperCase()" />
+
+	<int:channel id="replyChannel" />
+	<int:channel id="requestChannel" />
+</beans>
